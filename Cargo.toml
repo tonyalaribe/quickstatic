@@ -1,0 +1,17 @@
+[package]
+name = "quick-static"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+prose = { path = "../prose" }
+gray_matter = "0.2.6"
+eyre = "0.6.11"
+serde = "1.0.193"
+serde_yaml = "0.9.27"
+serde_json = "1.0.108"
+liquid = "0.26.4"
+liquid-core = "0.26.4"
+clap = { version = "4.4.11", features = ["derive"] }
