@@ -1,0 +1,4 @@
+<nav>
+  <a>Home</a>
+  <a>About</a>
+</nav>

@@ -2,4 +2,8 @@ base_url: "https://example.org"
 title: Example site
 theme: default
 
+layouts:
+  "blog/**/*.md": default/blogs/index.liquid
+  "**/*.md": default/index.liquid
+
 blabla: blbla 
