@@ -2,6 +2,8 @@ use indexmap::IndexMap;
 use liquid::{ObjectView, model::ValueView};
 use liquid_core::partials::{InMemorySource, OnDemandCompiler, EagerCompiler};
 use prose;
+use jotdown;
+use jotdown::Render;
 use serde::{Serialize, Deserialize};
 use std::{fs::{self, File, create_dir_all}, path::Path, io::{Write, self, Read}, collections::HashMap};
 use gray_matter::Matter;
@@ -20,6 +22,7 @@ struct DocumentData {
     markdown_processed: String,
     html: String,
     frontmatter: Value,
+    permalink: String,
 }
 
 // Config struct represents a key value tree of everything in the quickstatic config file. 
@@ -30,6 +33,7 @@ struct Config {
     title: String,
     theme: String,
     layouts: IndexMap<String, String>, 
+    ignore: Vec<String>,
     #[serde(skip_deserializing)]
     raw: Value,
 }
@@ -40,19 +44,23 @@ struct RenderContext<'a > {
     this: &'a mut DocumentData,
 }
 
-fn get_file_paths_recursive(dir: &Path, exclude_dir_name: &str, extension: &str) -> Vec<String> {
+fn get_file_paths_recursive(config_struct: &Config, dir: &Path, exclude_dir_names: &Vec<&str>, extension: &str) -> Vec<String> {
     let mut paths = Vec::new();
 
     if dir.is_dir() {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
+                if config_struct.ignore.iter().find(|glb| glob_match::glob_match(&glb, &path.to_str().unwrap())).is_some(){
+                    continue
+                }
+
                 if path.is_dir() {
-                    if path.file_name().unwrap_or_default() == exclude_dir_name {
+                    if  exclude_dir_names.contains(&path.file_name().unwrap_or_default().to_str().unwrap()) {
                         continue; // Skip this directory and continue with the next entry
                     }
                     // If it's a directory, recursively get the files within it
-                    paths.extend(get_file_paths_recursive(&path, exclude_dir_name, extension));
+                    paths.extend(get_file_paths_recursive(config_struct, &path, exclude_dir_names, extension));
                 } else {
                     // If it's a file, add its path to the vector
                     if let Some(path_str) = path.to_str() {
@@ -70,7 +78,7 @@ fn get_file_paths_recursive(dir: &Path, exclude_dir_name: &str, extension: &str)
 }
 
 
-fn copy_recursive(src: &Path, exclude_dir_name: &str, dest: &Path) -> io::Result<()> {
+fn copy_recursive(config_struct: &Config, src: &Path, exclude_dir_names: &Vec<&str>, dest: &Path) -> io::Result<()> {
     if src.is_dir() {
         if !dest.exists() {
             fs::create_dir_all(dest).expect(&format!("copy_recursive failed to create {dest:?}"));
@@ -81,12 +89,16 @@ fn copy_recursive(src: &Path, exclude_dir_name: &str, dest: &Path) -> io::Result
             let path = entry.path();
             let new_dest = dest.join(entry.file_name());
 
+            if config_struct.ignore.iter().find(|glb| glob_match::glob_match(&glb, &path.to_str().unwrap()) ).is_some(){
+                continue
+            }
+
             if path.is_dir() {
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-                if  file_name == exclude_dir_name || file_name.starts_with(".")  {
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if  exclude_dir_names.contains(&file_name.as_str()) || file_name.starts_with(".")  {
                     continue; // Skip this directory and continue with the next entry
                 }
-                copy_recursive(&path,exclude_dir_name,  &new_dest)?;
+                copy_recursive(config_struct, &path,exclude_dir_names,  &new_dest)?;
             } else {
                 if !path
                         .file_name()
@@ -125,25 +137,26 @@ fn find_template(layouts_map: IndexMap<String, String>, file_path: String) -> ey
         };
     };
 
-    Err(eyre::eyre!("expecting a general layout glob such as **/*.md to be set in the config.yaml file: {:?} layout_map: {:?}", file_path, layouts_map))
+    Err(eyre::eyre!("expecting a general layout glob such as **/*.md to be set in the ./quickstatic.yaml config file: {:?} layout_map: {:?}", file_path, layouts_map))
 }
 
 fn build(root_dir: &str) -> eyre::Result<()> {
     let dir = Path::new(root_dir); // Specify the directory
     
     // Read the config into a config struct. 
-    let config_file_content = fs::read_to_string(dir.join("_quickstatic/config.yaml")).expect("unable to find config file");
+    let config_file_content = fs::read_to_string(dir.join("quickstatic.yaml")).expect("unable to find `quickstatic.yaml` config file");
     let config_value = serde_yaml::from_str::<Value>(&config_file_content).unwrap();
     let mut config_struct:Config = serde_yaml::from_value(config_value.clone())?;
     config_struct.raw = config_value;
 
-    let exclude_dir_name = "_quickstatic";
+    let exclude_dir_names = vec!["_quickstatic", "public", ".git", "node_modules"];
     copy_recursive(
+        &config_struct,
         dir, 
-        exclude_dir_name, 
-        Path::new(&format!("{root_dir}/_quickstatic/public/")),
+        &exclude_dir_names, 
+        Path::new(&format!("{root_dir}/public/")),
     )?;
-    let file_paths = get_file_paths_recursive(dir, exclude_dir_name, "md");
+    let file_paths = get_file_paths_recursive(&config_struct, dir, &exclude_dir_names, "md");
 
     // matter will hold the parsed version of frontmatter from the markdown documents. 
     // frontmatter is extra metadata associated with markdown content. It is usually at the top of
@@ -184,12 +197,19 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let result = matter.parse(&contents);
         let frontmatter:Value = result.data.unwrap_or(gray_matter::Pod::Null).clone().deserialize()?;
 
+        let html_file_path  = file_path_no_root.strip_suffix(".md").unwrap().to_owned() + ".html";
+        let public_root_path = Path::new(root_dir.clone())
+            .join("public").to_string_lossy().to_owned().to_string();
+        let final_html_file_path = format!("{}{}", public_root_path, html_file_path);
+
+
         let mut document  = &mut DocumentData {
             file_path: file_path.clone(),
             markdown_raw: result.content.clone(),
             markdown_processed: "".into(),
             frontmatter: frontmatter.clone(),
             html: "".into(),
+            permalink: final_html_file_path.clone().into(),
         };
         let mut render_ctx = &mut RenderContext{
             config: &config_struct, 
@@ -205,7 +225,13 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
 
         let processed_markdown = template.render(&render_ctx_obj).unwrap();
+
         let markdown_html = prose::markdown(&processed_markdown);
+
+        
+        // let events = jotdown::Parser::new(&processed_markdown);
+        // let mut markdown_html = String::new();
+        // let _ = jotdown::html::Renderer::default().push(events, &mut markdown_html)?;
 
         println!("{file_path:?}");
         let layout_for_document = if let Some(layout_in_cfg) = frontmatter
@@ -222,15 +248,10 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
         
         let document_as_html = parser_builder
-            .parse_file(Path::new(root_dir.clone()).join("_quickstatic/themes").join(layout_for_document ))
+            .parse_file(Path::new(root_dir.clone()).join("_quickstatic/themes").join(&layout_for_document ))
             .and_then(|f|f.render(&render_ctx_obj))
-            .expect(&format!("document_as_html failed for file_path {file_path:?}"));
+            .expect(&format!("document_as_html failed for file_path {file_path:?} and layout {layout_for_document:?}"));
 
-
-        let html_file_path  = file_path_no_root.strip_suffix(".md").unwrap().to_owned() + ".html";
-        let public_root_path = Path::new(root_dir.clone())
-            .join("_quickstatic/public").to_string_lossy().to_owned().to_string();
-        let final_html_file_path = format!("{}{}", public_root_path, html_file_path);
 
          
         // Make sure the destination directory exists

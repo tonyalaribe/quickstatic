@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 prose = { path = "../prose" }
+jotdown = "0.3.2"
 gray_matter = "0.2.6"
 eyre = "0.6.11"
 serde = "1.0.193"
