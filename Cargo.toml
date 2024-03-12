@@ -15,6 +15,7 @@ serde_yaml = "0.9.27"
 serde_json = {version = "1.0.108", features = ["preserve_order"]}
 liquid = "0.26.4"
 liquid-core = "0.26.4"
+liquid-lib = "0.26.4"
 clap = { version = "4.4.11", features = ["derive"] }
 glob-match = "0.2.1"
 indexmap = {version = "2.1.0", features=["serde"]}

@@ -2,8 +2,6 @@ use indexmap::IndexMap;
 use liquid::{ObjectView, model::ValueView};
 use liquid_core::partials::{InMemorySource, OnDemandCompiler, EagerCompiler};
 use prose;
-use jotdown;
-use jotdown::Render;
 use serde::{Serialize, Deserialize};
 use std::{fs::{self, File, create_dir_all}, path::Path, io::{Write, self, Read}, collections::HashMap};
 use gray_matter::Matter;
@@ -11,14 +9,16 @@ use gray_matter::engine::YAML;
 use serde_yaml::Value;
 use eyre::{WrapErr, Result};
 mod base_cli;
+mod where_glob;
 use base_cli::Commands;
 use clap::Parser;
 
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct DocumentData {
     file_path: String,
-    markdown_raw: String, 
+    html_file_path: String,
+    markdown_body: String, 
     markdown_processed: String,
     html: String,
     frontmatter: Value,
@@ -42,6 +42,7 @@ struct Config {
 struct RenderContext<'a > {
     config: &'a Config,
     this: &'a mut DocumentData,
+    file_list: &'a Vec<DocumentData>
 }
 
 fn get_file_paths_recursive(config_struct: &Config, dir: &Path, exclude_dir_names: &Vec<&str>, extension: &str) -> Vec<String> {
@@ -185,9 +186,13 @@ fn build(root_dir: &str) -> eyre::Result<()> {
     // TODO: do this in a new loop, so the context can contain the entire render tree, to
     // support referencing other documents in the template. Eg in table of content pages.
     // or listing categories and tags.
-    let parser_builder = liquid::ParserBuilder::with_stdlib()
-        .partials(partials_compiler)
-        .build().unwrap();
+    let builder = liquid::ParserBuilder::with_stdlib()
+        .filter(crate::where_glob::WhereGlob);
+    let parser_builder = builder.partials(partials_compiler).build().unwrap();
+
+
+    // documents_map holds the entire documents tree and can be iterated eg via prefix.
+    let mut documents_list = vec![];
 
     for file_path in file_paths.clone() {
         let file_path_str = file_path.to_string().to_owned();
@@ -198,49 +203,48 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let frontmatter:Value = result.data.unwrap_or(gray_matter::Pod::Null).clone().deserialize()?;
 
         let html_file_path  = file_path_no_root.strip_suffix(".md").unwrap().to_owned() + ".html";
-        let public_root_path = Path::new(root_dir.clone())
+        let public_root_path = Path::new(root_dir)
             .join("public").to_string_lossy().to_owned().to_string();
         let final_html_file_path = format!("{}{}", public_root_path, html_file_path);
 
 
-        let mut document  = &mut DocumentData {
+        let document  = DocumentData {
             file_path: file_path.clone(),
-            markdown_raw: result.content.clone(),
+            html_file_path: final_html_file_path.clone(),
+            markdown_body: result.content.clone(),
             markdown_processed: "".into(),
             frontmatter: frontmatter.clone(),
             html: "".into(),
             permalink: final_html_file_path.clone().into(),
         };
+
+        documents_list.push(document);
+    }
+
+    let documents_list_clone = documents_list.clone();
+    for mut document in documents_list {
         let mut render_ctx = &mut RenderContext{
             config: &config_struct, 
             this: &mut document, 
+            file_list: &documents_list_clone,
         };
 
-
-
         let template = parser_builder
-            .parse(&result.content)
-            .expect(&format!("parser_builder.parse failed on content result of current_file: {file_path} post-frontmatter content: {:?}",&result.content ));
+            .parse(&render_ctx.this.markdown_body)
+            .expect(&format!("parser_builder.parse failed on content result of current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body));
 
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
-
         let processed_markdown = template.render(&render_ctx_obj).unwrap();
-
         let markdown_html = prose::markdown(&processed_markdown);
 
-        
-        // let events = jotdown::Parser::new(&processed_markdown);
-        // let mut markdown_html = String::new();
-        // let _ = jotdown::html::Renderer::default().push(events, &mut markdown_html)?;
-
-        println!("{file_path:?}");
-        let layout_for_document = if let Some(layout_in_cfg) = frontmatter
+        println!("{:?}", render_ctx.this.file_path);
+        let layout_for_document = if let Some(layout_in_cfg) = render_ctx.this.frontmatter
             .as_mapping()
             .and_then(|m|m.get("layout"))
             .and_then(|m|m.as_str()) {
             layout_in_cfg.to_string()
         }else{
-                find_template(config_struct.layouts.clone(), file_path.clone())?
+                find_template(config_struct.layouts.clone(), render_ctx.this.file_path.clone())?
         };
 
         render_ctx.this.markdown_processed = processed_markdown;
@@ -250,21 +254,24 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let document_as_html = parser_builder
             .parse_file(Path::new(root_dir.clone()).join("_quickstatic/themes").join(&layout_for_document ))
             .and_then(|f|f.render(&render_ctx_obj))
-            .expect(&format!("document_as_html failed for file_path {file_path:?} and layout {layout_for_document:?}"));
+            .expect(&format!("document_as_html failed for file_path {:?} and layout {:?}", document.file_path, layout_for_document));
 
-
-         
-        // Make sure the destination directory exists
-        if let Some(dir) = Path::new(&final_html_file_path).parent() {
-            create_dir_all(dir)?;
-        }
-
-        let mut file = File::create(final_html_file_path)?;
-        file.write_all(document_as_html.as_bytes())?;
+        write_to_location(document.html_file_path, document_as_html.as_bytes())?;
     }
 
     Ok(())
 }
+
+fn write_to_location(file_path: String, data: &[u8]) -> eyre::Result<()>{
+     // Make sure the destination directory exists
+        if let Some(dir) = Path::new(&file_path).parent() {
+            create_dir_all(dir)?;
+        }
+
+        let mut file = File::create(file_path)?;
+        file.write_all(data)?;
+    Ok(())
+} 
 
 fn read_partials_from_directory(directory: &Path, extension: &str) -> io::Result<HashMap<String, String>> {
     let mut partials = HashMap::new();
@@ -274,8 +281,7 @@ fn read_partials_from_directory(directory: &Path, extension: &str) -> io::Result
 
 fn read_directory(dir: &Path, partials: &mut HashMap<String, String>, prefix: &str, extension: &str) -> io::Result<()> {
     for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
+        let path = entry?.path();
 
         // Check if it's a directory or a file with the desired extension
         if path.is_dir() {
