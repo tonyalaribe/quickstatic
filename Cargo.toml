@@ -2,6 +2,8 @@
 name = "quickstatic"
 version = "0.1.0"
 edition = "2021"
+license = "MIT/Apache-2.0"
+description = "First static site generator build for [Djot](https://djot.net). Optimized for the actual content and not the themes or bells and wistle of the Static site generator"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
