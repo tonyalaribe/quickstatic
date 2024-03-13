@@ -1,13 +1,13 @@
-use liquid_core::{Value, ValueCow, ValueView};
 use liquid_core::model::ValueViewCmp;
+use liquid_core::Error;
 use liquid_core::Expression;
 use liquid_core::Result;
 use liquid_core::Runtime;
 use liquid_core::{
     Display_filter, Filter, FilterParameters, FilterReflection, FromFilterParameters, ParseFilter,
 };
+use liquid_core::{Value, ValueCow, ValueView};
 use std::collections::HashMap;
-use liquid_core::Error;
 
 #[derive(Debug, FilterParameters)]
 struct WhereGlobArgs {
@@ -81,15 +81,10 @@ impl Filter for WhereGlobFilter {
                     object
                         .get(property)
                         .map(|value| {
-                            // let value = ValueViewCmp::new(value);
                             glob_match::glob_match(
+                                target_value.to_kstr().as_str(),
                                 &value.as_scalar().unwrap().to_kstr().to_string(),
-                               target_value.to_kstr().as_str() 
-                            );
-
-                            // let value_str = value.as_scalar()?.to_str().as_str().ok();
-                            // glob_match::glob_match(&target_value.to_value(), &value)
-                            true
+                            )
                         })
                         .unwrap_or(false)
                 })

@@ -161,6 +161,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "deunicode"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6e854126756c496b8c81dec88f9a706b15b875c5849d4097a3854476b9fdf94"
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -174,6 +180,18 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+]
+
+[[package]]
+name = "djotters"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e996caa16a3d08a94c60f51d348d5897b8ed98d17c62b40dc94c609d45c1c60"
+dependencies = [
+ "html-escape",
+ "itertools 0.8.2",
+ "nom",
+ "pretty_assertions",
 ]
 
 [[package]]
@@ -370,6 +388,7 @@ version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2a17e273a6fb1fb6268f7a5867ddfd0bd4683c7e19b51084f3d567fad4348c0"
 dependencies = [
+ "deunicode",
  "itertools 0.10.5",
  "liquid-core",
  "once_cell",
@@ -499,20 +518,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "prose"
-version = "0.1.3"
-dependencies = [
- "html-escape",
- "itertools 0.8.2",
- "nom",
- "pretty_assertions",
-]
-
-[[package]]
 name = "quickstatic"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "djotters",
  "eyre",
  "glob-match",
  "gray_matter",
@@ -521,7 +531,6 @@ dependencies = [
  "liquid",
  "liquid-core",
  "liquid-lib",
- "prose",
  "serde",
  "serde_json",
  "serde_yaml",
