@@ -35,6 +35,7 @@ You can learn more about it here ![https://github.com/Shopify/liquid/wiki/Liquid
 
 To use any given template file for a particular page, simply reference the template file from the frontmatter. 
 Eg:
+
 ```markdown
 ---
 title: Page title
