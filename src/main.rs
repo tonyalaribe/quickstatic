@@ -268,7 +268,7 @@ fn build(root_dir: &str) -> eyre::Result<()> {
             html: "".into(),
             permalink: final_html_file_path.clone().to_string()
                 .trim_end_matches("index.html")
-                .trim_left_matches("./public")
+                .trim_start_matches("./public")
                 .to_owned(),
         };
 
