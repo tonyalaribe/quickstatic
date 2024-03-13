@@ -6,6 +6,12 @@ We spend more time writing content than editing website templates and configs.
 
 We should lean into features in markdown, such as directives and custom attributes, for adding features and components to markdow, instead of supporting MDX.
 
+## Installation
+
+- Install using Rust cargo for now. Install cargo via: [Cargo installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html)
+```
+cargo install quickstatic
+```
 
 ## Priorities 
 - Simplicity 
