@@ -1,5 +1,7 @@
 # QuickStatic 🚀🦀🔥
 
+## First static site generator build for [Djot](https://djot.net)
+
 A fast static site generator written in Rust 🦀🚀.
 A QuickStatic site should show the content first, and hide themes or configuration away. 
 We spend more time writing content than editing website templates and configs.
