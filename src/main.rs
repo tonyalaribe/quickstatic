@@ -1,7 +1,4 @@
-use djotters;
-use eyre::WrapErr;
-use gray_matter::engine::YAML;
-use gray_matter::Matter;
+use gray_matter::{engine::YAML, Matter};
 use indexmap::IndexMap;
 use liquid_core::partials::{EagerCompiler, InMemorySource};
 use serde::{Deserialize, Serialize};
@@ -16,10 +13,9 @@ mod base_cli;
 mod where_glob;
 use base_cli::Commands;
 use clap::Parser;
-use notify::{RecursiveMode, Watcher};
 use std::time::Duration;
-
 use notify_debouncer_mini::{new_debouncer, notify::*, DebounceEventResult};
+use eyre::WrapErr;
 
 #[derive(Clone, Debug, Serialize)]
 struct DocumentData {
@@ -372,7 +368,7 @@ fn build(root_dir: &str) -> eyre::Result<()> {
     // Render all the markdowns and save them to final destination.
     let documents_list_clone = documents_list.clone();
     for mut document in documents_list {
-        let mut render_ctx = &mut RenderContext {
+        let render_ctx = &mut RenderContext {
             config: &config_struct,
             this: &mut document,
             file_list: &documents_list_clone,

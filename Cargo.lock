@@ -1059,7 +1059,6 @@ dependencies = [
  "liquid",
  "liquid-core",
  "liquid-lib",
- "notify",
  "notify-debouncer-mini",
  "serde",
  "serde_json",
