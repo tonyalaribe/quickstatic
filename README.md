@@ -29,6 +29,29 @@ cargo install quickstatic
 QuickStatic generates static websites, and focuses on doing that in a flexible and fast way.
 
 
+## Basic usage
+
+Quickstatic themes should be under `_quickstatic/themes/` directory.
+
+Quickstatic public or build directory is `quickstatic/public`
+
+Everything in the root directory gets copied into the output directory in that order, while markdown files are compiled to html files.
+Anything with a .liquid extension is executed as a template and the .liquid extension striped. 
+
+Eg `sitemap.xml.liquid` would be evaluated and become `sitemap.xml`
+
+### Build site 
+
+```
+quickstatic build
+```
+
+### Watch site for changes and continue rebuilding 
+
+```
+quickstatic serve
+```
+
 ## Themes and Templates 
 
 QuickStatic themes can be written using the shopify liquid templating language. 
@@ -49,6 +72,7 @@ Page Content.
 
 This is flexible, and allows you reference multiple themes from one QuickStatic site.
 All themes exist in the `_quickstatic/themes/` folder. Your QuickStatic site comes with a default theme named `default`.
+
 
 
 ## NOTE 

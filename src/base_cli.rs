@@ -13,13 +13,19 @@ pub struct Cli {
     /// Sets the log level to be used. Eg trace, debug, warn, info, error
     #[arg(short, long, default_value = "info")]
     pub log_level: String,
+
+    /// Sets the YAML test configuration file
+    #[arg(short, long, default_value = ".")]
+    pub dir: String,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
     Build {
-        /// Sets the YAML test configuration file
-        #[arg(short, long)]
-        dir: String,
     },
+    Serve {
+        /// Sets the YAML test configuration file
+        #[arg(short, long, default_value = "8080" )]
+        port: u16,
+    }
 }

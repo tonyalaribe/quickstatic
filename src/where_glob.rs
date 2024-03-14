@@ -1,4 +1,3 @@
-use liquid_core::model::ValueViewCmp;
 use liquid_core::Error;
 use liquid_core::Expression;
 use liquid_core::Result;
@@ -7,7 +6,6 @@ use liquid_core::{
     Display_filter, Filter, FilterParameters, FilterReflection, FromFilterParameters, ParseFilter,
 };
 use liquid_core::{Value, ValueCow, ValueView};
-use std::collections::HashMap;
 
 #[derive(Debug, FilterParameters)]
 struct WhereGlobArgs {
@@ -100,13 +98,4 @@ where
     S: Into<liquid_core::model::KString>,
 {
     Error::with_msg("Invalid input").context("cause", cause)
-}
-
-pub(crate) fn invalid_argument<S>(argument: S, cause: S) -> Error
-where
-    S: Into<liquid_core::model::KString>,
-{
-    Error::with_msg("Invalid argument")
-        .context("argument", argument)
-        .context("cause", cause)
 }

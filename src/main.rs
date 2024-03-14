@@ -1,10 +1,9 @@
 use djotters;
-use eyre::{Result, WrapErr};
+use eyre::WrapErr;
 use gray_matter::engine::YAML;
 use gray_matter::Matter;
 use indexmap::IndexMap;
-use liquid::{model::ValueView, ObjectView};
-use liquid_core::partials::{EagerCompiler, InMemorySource, OnDemandCompiler};
+use liquid_core::partials::{EagerCompiler, InMemorySource};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::{
@@ -17,6 +16,10 @@ mod base_cli;
 mod where_glob;
 use base_cli::Commands;
 use clap::Parser;
+use notify::{RecursiveMode, Watcher};
+use std::time::Duration;
+
+use notify_debouncer_mini::{new_debouncer, notify::*, DebounceEventResult};
 
 #[derive(Clone, Debug, Serialize)]
 struct DocumentData {
@@ -162,13 +165,77 @@ fn copy_recursive(
     Ok(())
 }
 
-fn main() -> eyre::Result<()> {
+#[tokio::main]
+async fn main() -> eyre::Result<()> {
     let cli_instance = base_cli::Cli::parse();
 
     match cli_instance.command {
-        None => build("./"),
-        Some(Commands::Build { dir }) => build(&dir),
+        None => build(&cli_instance.dir),
+        Some(Commands::Build {}) => build(&cli_instance.dir),
+        Some(Commands::Serve { port }) => serve(cli_instance.dir, port).await,
     }
+}
+
+async fn serve(dir: String, http_port: u16) -> eyre::Result<()> {
+    println!(
+        "Serving quickstatic on port: {} and directory: {}",
+        http_port, dir
+    );
+
+    // Run the directory watcher in a separate thread
+    let dir_clone = dir.clone();
+    std::thread::spawn(move || {
+        let _ = watch_directory_and_run_command(&dir_clone)
+            .expect("watch_directory_and_run_command error");
+    });
+
+    let dir_to_serve = dir + "/_quickstatic/public/";
+    let _ = serve_directory(http_port, dir_to_serve).await;
+    Ok(())
+}
+
+fn watch_directory_and_run_command(dir: &str) -> eyre::Result<()> {
+    match build(dir) {
+        Err(e) => println!("Build Error: {:?}\n", e),
+        Ok(_res) => println!("Rebuilt site \n"),
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    println!("Watching and recompiling after every change");
+
+    let mut debouncer = new_debouncer(Duration::from_secs(2), move |res: DebounceEventResult| {
+        tx.send(res).unwrap();
+    })
+    .unwrap();
+
+    // Add a path to be watched. All files and directories at that path and
+    // below will be monitored for changes.
+    debouncer
+        .watcher()
+        .watch(Path::new("."), RecursiveMode::Recursive)
+        .unwrap();
+
+    for res in rx {
+        match res {
+            Ok(events) => events
+                .iter()
+                .filter(|f| !f.path.to_str().unwrap().contains("_quickstatic/"))
+                .for_each(|_| match build(dir) {
+                    Err(e) => println!("Build Error: {:?}\n", e),
+                    Ok(_res) => println!("Rebuilt site \n"),
+                }),
+            Err(e) => println!("Error {:?}", e),
+        }
+    }
+
+    Ok(())
+}
+
+async fn serve_directory(port: u16, dir: String) -> eyre::Result<()> {
+    let route = warp::fs::dir(dir);
+    warp::serve(route).run(([127, 0, 0, 1], port)).await;
+    Ok(())
 }
 
 fn find_template(layouts_map: IndexMap<String, String>, file_path: String) -> eyre::Result<String> {
@@ -328,8 +395,6 @@ fn build(root_dir: &str) -> eyre::Result<()> {
                 .wrap_err_with(||format!("parser_builder.parse template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))? ;
         }
 
-        println!("{:?}", render_ctx.this.file_path);
-
         let layout_for_document = if let Some(layout_in_cfg) = render_ctx
             .this
             .frontmatter
@@ -348,7 +413,7 @@ fn build(root_dir: &str) -> eyre::Result<()> {
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
         let document_as_html = parser_builder
             .parse_file(
-                Path::new(root_dir.clone())
+                Path::new(root_dir)
                     .join("_quickstatic/themes")
                     .join(&layout_for_document),
             )

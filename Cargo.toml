@@ -1,6 +1,6 @@
 [package]
 name = "quickstatic"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT/Apache-2.0"
 description = "First static site generator build for [Djot](https://djot.net). Optimized for the actual content and not the themes or bells and wistle of the Static site generator"
@@ -9,7 +9,7 @@ description = "First static site generator build for [Djot](https://djot.net). O
 
 [dependencies]
 # djotters = { path = "../djotters" }
-djotters = "0.1.5" 
+djotters = "0.1.4" 
 jotdown = "0.3.2"
 gray_matter = "0.2.6"
 eyre = "0.6.11"
@@ -22,3 +22,8 @@ liquid-lib = { version="0.26.4", features=["stdlib", "jekyll", "shopify"]}
 clap = { version = "4.4.11", features = ["derive"] }
 glob-match = "0.2.1"
 indexmap = {version = "2.1.0", features=["serde"]}
+notify = "6.1.1"
+notify-debouncer-mini = { version = "*", default-features = false }
+tokio = { version = "1.36.0", features = ["full"] }
+warp = "0.3.6"
+
