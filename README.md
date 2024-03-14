@@ -1,6 +1,6 @@
 # QuickStatic 🚀🦀🔥
 
-## First static site generator build for [Djot](https://djot.net)
+## The First static site generator build specifically for [Djot](https://djot.net) (A more powerful but strict Markdown dialect)
 
 A fast static site generator written in Rust 🦀🚀.
 A QuickStatic site should show the content first, and hide themes or configuration away. 
@@ -16,6 +16,7 @@ cargo install quickstatic
 ```
 
 ## Priorities 
+
 - Simplicity 
 - Stability (Few features, and should not change very much)
 - Content first. 
