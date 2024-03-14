@@ -1,10 +1,10 @@
+use djotters;
 use eyre::{Result, WrapErr};
 use gray_matter::engine::YAML;
 use gray_matter::Matter;
 use indexmap::IndexMap;
 use liquid::{model::ValueView, ObjectView};
 use liquid_core::partials::{EagerCompiler, InMemorySource, OnDemandCompiler};
-use djotters;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::{
@@ -21,10 +21,10 @@ use clap::Parser;
 #[derive(Clone, Debug, Serialize)]
 struct DocumentData {
     file_path: String,
-    html_file_path: String,
+    file_destination_path: String,
     markdown_body: String,
     markdown_processed: String,
-    html: String,
+    content: String,
     frontmatter: Value,
     permalink: String,
 }
@@ -35,7 +35,6 @@ struct DocumentData {
 struct Config {
     base_url: String,
     title: String,
-    theme: String,
     layouts: IndexMap<String, String>,
     ignore: Vec<String>,
     #[serde(skip_deserializing)]
@@ -53,7 +52,7 @@ fn get_file_paths_recursive(
     config_struct: &Config,
     dir: &Path,
     exclude_dir_names: &Vec<&str>,
-    extension: &str,
+    extensions: &Vec<&str>,
 ) -> Vec<String> {
     let mut paths = Vec::new();
 
@@ -81,14 +80,17 @@ fn get_file_paths_recursive(
                         config_struct,
                         &path,
                         exclude_dir_names,
-                        extension,
+                        extensions,
                     ));
                 } else {
                     // If it's a file, add its path to the vector
                     if let Some(path_str) = path.to_str() {
-                        let ext_with_dot = ".".to_owned() + extension;
-                        if path_str.to_string().ends_with(&ext_with_dot) {
-                            paths.push(path_str.to_string());
+                        for extension in extensions {
+                            let ext_with_dot = ".".to_owned() + extension;
+
+                            if path_str.to_string().ends_with(&ext_with_dot) {
+                                paths.push(path_str.to_string());
+                            }
                         }
                     }
                 }
@@ -189,14 +191,19 @@ fn build(root_dir: &str) -> eyre::Result<()> {
     let mut config_struct: Config = serde_yaml::from_value(config_value.clone())?;
     config_struct.raw = config_value;
 
-    let exclude_dir_names = vec!["_quickstatic", "public", ".git", "node_modules"];
+    let exclude_dir_names = vec!["_quickstatic", ".git", "node_modules"];
     copy_recursive(
         &config_struct,
         dir,
         &exclude_dir_names,
-        Path::new(&format!("{root_dir}/public/")),
+        Path::new(&format!("{root_dir}/_quickstatic/public/")),
     )?;
-    let file_paths = get_file_paths_recursive(&config_struct, dir, &exclude_dir_names, "md");
+    let file_paths = get_file_paths_recursive(
+        &config_struct,
+        dir,
+        &exclude_dir_names,
+        &vec!["md", "liquid"],
+    );
 
     // matter will hold the parsed version of frontmatter from the markdown documents.
     // frontmatter is extra metadata associated with markdown content. It is usually at the top of
@@ -242,39 +249,60 @@ fn build(root_dir: &str) -> eyre::Result<()> {
     for file_path in file_paths.clone() {
         let file_path_str = file_path.to_string().to_owned();
         let file_path_no_root = file_path_str.strip_prefix(root_dir).unwrap();
-
         let contents = fs::read_to_string(file_path.clone())?;
-        let result = matter.parse(&contents);
-        let frontmatter: Value = result
-            .data
-            .unwrap_or(gray_matter::Pod::Null)
-            .clone()
-            .deserialize()?;
 
-        let html_file_path = file_path_no_root.strip_suffix(".md").unwrap().to_owned() + ".html";
+        // Any files with the liquid extension are stripped of the .liquid. The content is treated
+        // as main content as is.
+        let (file_content, frontmatter, file_destination_path) =
+            if file_path_no_root.ends_with(".md") {
+                let result = matter.parse(&contents);
+                let frontmatter: Value = result
+                    .data
+                    .unwrap_or(gray_matter::Pod::Null)
+                    .clone()
+                    .deserialize()?;
+
+                (
+                    result.content.clone(),
+                    frontmatter,
+                    file_path_no_root.strip_suffix(".md").unwrap().to_owned() + ".html",
+                )
+            } else {
+                (
+                    contents,
+                    serde_yaml::Value::Null,
+                    file_path_no_root
+                        .strip_suffix(".liquid")
+                        .unwrap()
+                        .to_owned(),
+                )
+            };
         let public_root_path = Path::new(root_dir)
-            .join("public")
+            .join("_quickstatic/public")
             .to_string_lossy()
             .to_owned()
             .to_string();
-        let final_html_file_path = format!("{}{}", public_root_path, html_file_path);
+        let final_file_destination_path = format!("{}{}", public_root_path, file_destination_path);
 
         let document = DocumentData {
             file_path: file_path.clone(),
-            html_file_path: final_html_file_path.clone(),
-            markdown_body: result.content.clone(),
+            file_destination_path: final_file_destination_path.clone(),
+            markdown_body: file_content.clone(),
             markdown_processed: "".into(),
-            frontmatter: frontmatter.clone(),
-            html: "".into(),
-            permalink: final_html_file_path.clone().to_string()
+            frontmatter: frontmatter,
+            content: file_content.into(),
+            permalink: final_file_destination_path
+                .clone()
+                .to_string()
                 .trim_end_matches("index.html")
-                .trim_start_matches("./public")
+                .trim_start_matches("./_quickstatic/public")
                 .to_owned(),
         };
 
         documents_list.push(document);
     }
 
+    // Render all the markdowns and save them to final destination.
     let documents_list_clone = documents_list.clone();
     for mut document in documents_list {
         let mut render_ctx = &mut RenderContext {
@@ -283,15 +311,25 @@ fn build(root_dir: &str) -> eyre::Result<()> {
             file_list: &documents_list_clone,
         };
 
-        let template = parser_builder
-            .parse(&render_ctx.this.markdown_body)
-            .expect(&format!("parser_builder.parse failed on content result of current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body));
-
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
-        let processed_markdown = template.render(&render_ctx_obj).unwrap();
-        let markdown_html = djotters::markdown(&processed_markdown);
+        if render_ctx.this.file_path.clone().ends_with(".md") {
+            let template = parser_builder
+                .parse(&render_ctx.this.markdown_body)
+                .wrap_err_with(|| format!("parser_builder.parse template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))?;
+
+            render_ctx.this.markdown_processed = template.render(&render_ctx_obj).unwrap();
+            render_ctx.this.content = djotters::markdown(&render_ctx.this.markdown_processed);
+        } else {
+            let template = parser_builder
+                .parse(&render_ctx.this.content)
+                .wrap_err_with(|| format!("parser_builder.parse failed on content result of current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))?;
+
+            render_ctx.this.content = template.render(&render_ctx_obj)
+                .wrap_err_with(||format!("parser_builder.parse template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))? ;
+        }
 
         println!("{:?}", render_ctx.this.file_path);
+
         let layout_for_document = if let Some(layout_in_cfg) = render_ctx
             .this
             .frontmatter
@@ -307,10 +345,7 @@ fn build(root_dir: &str) -> eyre::Result<()> {
             )?
         };
 
-        render_ctx.this.markdown_processed = processed_markdown;
-        render_ctx.this.html = markdown_html;
         let render_ctx_obj = liquid::to_object(&render_ctx)?;
-
         let document_as_html = parser_builder
             .parse_file(
                 Path::new(root_dir.clone())
@@ -323,7 +358,7 @@ fn build(root_dir: &str) -> eyre::Result<()> {
                 document.file_path, layout_for_document
             ));
 
-        write_to_location(document.html_file_path, document_as_html.as_bytes())?;
+        write_to_location(document.file_destination_path, document_as_html.as_bytes())?;
     }
 
     Ok(())
@@ -332,11 +367,21 @@ fn build(root_dir: &str) -> eyre::Result<()> {
 fn write_to_location(file_path: String, data: &[u8]) -> eyre::Result<()> {
     // Make sure the destination directory exists
     if let Some(dir) = Path::new(&file_path).parent() {
-        create_dir_all(dir)?;
+        create_dir_all(dir).wrap_err_with(|| {
+            format!(
+                "write_to_location: create_dir_all failed for path: {}",
+                &file_path
+            )
+        })?;
     }
 
-    let mut file = File::create(file_path)?;
-    file.write_all(data)?;
+    let mut file = File::create(&file_path)?;
+    file.write_all(data).wrap_err_with(|| {
+        format!(
+            "write_to_location: unable to write file data to file at path {}",
+            &file_path
+        )
+    })?;
     Ok(())
 }
 

@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-
 #[derive(Parser)]
 #[command(name = "quickstatic")]
 #[command(author = "APIToolkit. <hello@apitoolkit.io>")]
