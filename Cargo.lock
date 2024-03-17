@@ -271,7 +271,9 @@ dependencies = [
 
 [[package]]
 name = "djotters"
-version = "0.1.6"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df84a2541c145b0bdb122fa800fb5b74c2eadbf174acc08bc5de8d370ce15698"
 dependencies = [
  "html-escape",
  "itertools 0.12.1",
@@ -1046,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "quickstatic"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "djotters",
