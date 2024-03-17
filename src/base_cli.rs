@@ -20,11 +20,10 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Build {
-    },
+    Build {},
     Serve {
         /// Sets the YAML test configuration file
-        #[arg(short, long, default_value = "8080" )]
+        #[arg(short, long, default_value = "2020")]
         port: u16,
-    }
+    },
 }

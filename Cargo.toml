@@ -8,8 +8,8 @@ description = "First static site generator build for [Djot](https://djot.net). O
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# djotters = { path = "../djotters" }
-djotters = "0.1.4" 
+djotters = { path = "../djotters" }
+# djotters = "0.1.6" 
 jotdown = "0.3.2"
 gray_matter = "0.2.6"
 eyre = "0.6.11"
