@@ -176,10 +176,44 @@ async fn main() -> eyre::Result<()> {
     let cli_instance = base_cli::Cli::parse();
 
     match cli_instance.command {
-        None => build(cli_instance.dir),
-        Some(Commands::Build {}) => build(cli_instance.dir),
+        None => build_with_index(cli_instance.dir).await,
+        Some(Commands::Build {}) => build_with_index(cli_instance.dir).await,
         Some(Commands::Serve { port }) => serve(cli_instance.dir, port).await,
     }
+}
+
+async fn build_with_index(root_dir: String) -> eyre::Result<()> {
+    build(root_dir)?;
+
+    // Generate pagefind's search index
+     // let options = pagefind::SearchOptions {
+    let options = pagefind::PagefindInboundConfig{
+        source: "_quickstatic/public/".to_string(),
+        site:  "_quickstatic/public/".to_string(),
+        bundle_dir: None,
+        output_subdir: None,
+        output_path: None,
+        root_selector: "html".into(),
+        exclude_selectors: vec![],
+        glob: "**/*.{html}".into(),
+        force_language: None,
+        serve: false,
+        verbose: true,
+        logfile: None,
+        keep_index_url: false,
+        service: false,
+    };
+    let search_options = pagefind::SearchOptions::load(options).unwrap();
+    let runner = &mut pagefind::SearchState::new(search_options.clone());
+    runner.log_start();
+    _ = runner
+        .fossick_many(search_options.site_source.clone(), search_options.glob.clone())
+        .await;
+
+
+    runner.build_indexes().await;
+
+    Ok(())
 }
 
 async fn serve(dir: String, http_port: u16) -> eyre::Result<()> {
