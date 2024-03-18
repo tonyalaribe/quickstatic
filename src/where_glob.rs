@@ -99,3 +99,141 @@ where
 {
     Error::with_msg("Invalid input").context("cause", cause)
 }
+
+
+// 
+//
+//
+//
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "ternary",
+    description = "Ternary Operator.",
+    parameters(TernaryArgs),
+    parsed(TernaryFilter)
+)]
+pub struct Ternary;
+
+
+
+#[derive(Debug, FilterParameters)]
+struct TernaryArgs {
+    #[parameter(description = "Value if condition is true", arg_type = "any")]
+    true_value: Expression,
+
+    #[parameter(description = "Value if condition is false", arg_type = "any")]
+    false_value: Expression,
+}
+
+
+#[derive(Debug, FromFilterParameters, Display_filter)]
+#[name = "ternary"]
+struct TernaryFilter {
+    #[parameters]
+    args: TernaryArgs,
+}
+
+impl Filter for TernaryFilter {
+    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+        // Convert the input to a Value
+        let input_value = input.to_value();
+
+        // Attempt to convert the Value into a boolean
+        let condition = input_value.as_scalar().and_then(|s| s.to_bool()).unwrap_or(false);
+
+        let true_value = self.args.true_value.evaluate(runtime)?.into_owned();
+        let false_value = self.args.false_value.evaluate(runtime)?.into_owned();
+
+        if condition {
+            Ok(true_value)
+        } else {
+            Ok(false_value)
+        }
+    }
+}
+
+
+// StartsWith filter 
+//
+
+#[derive(Debug, Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "starts_with",
+    description = "Checks if a string starts with a specified prefix.",
+    parameters(StartsWithArgs),
+    parsed(StartsWithFilter)
+)]
+pub struct StartsWith;
+
+#[derive(Debug, FilterParameters)]
+struct StartsWithArgs {
+    #[parameter(description = "The prefix to check for", arg_type = "str")]
+    prefix: Expression,
+}
+
+#[derive(Debug, FromFilterParameters, Display_filter)]
+#[name = "starts_with"]
+struct StartsWithFilter {
+    #[parameters]
+    args: StartsWithArgs,
+}
+
+impl Filter for StartsWithFilter {
+    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+        // Attempt to convert the input to a scalar and then to a string
+        let input_str = input.to_value().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?.to_kstr().into_string();
+
+        // Evaluate the prefix argument and attempt to convert it to a string
+        let prefix = self.args.prefix.evaluate(runtime)?.into_owned().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Prefix is not a scalar value"))?.to_kstr().into_string();
+
+        // Check if the input string starts with the prefix
+        let result = input_str.starts_with(&prefix);
+
+        // Return the result as a Value
+        Ok(Value::scalar(result))
+    }
+}
+
+
+// Equals Filter 
+//
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "equals",
+    description = "Checks if a string equals a specified value.",
+    parameters(EqualsArgs),
+    parsed(EqualsFilter)
+)]
+pub struct Equals;
+
+#[derive(Debug, FilterParameters)]
+struct EqualsArgs {
+    #[parameter(description = "The value to compare against", arg_type = "any")]
+    compare_value: Expression,
+}
+
+#[derive(Debug, FromFilterParameters, Display_filter)]
+#[name = "equals"]
+pub struct EqualsFilter {
+    #[parameters]
+    args: EqualsArgs,
+}
+
+
+impl Filter for EqualsFilter {
+    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+        // Convert the input to a Value
+        let input_value = input.to_value();
+
+        // Evaluate the compare_value argument and convert it to a Value
+        let compare_value = self.args.compare_value.evaluate(runtime)?.into_owned();
+
+        // Check if the input value equals the compare_value
+        let result = input_value == compare_value;
+
+        // Return the result as a Value
+        Ok(Value::scalar(result))
+    }
+}

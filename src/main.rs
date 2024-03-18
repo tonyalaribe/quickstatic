@@ -313,6 +313,9 @@ fn build(root_dir: String) -> eyre::Result<()> {
     // or listing categories and tags.
     let builder = liquid::ParserBuilder::with_stdlib()
         .filter(crate::where_glob::WhereGlob)
+        .filter(crate::where_glob::Ternary)
+        .filter(crate::where_glob::StartsWith)
+        .filter(crate::where_glob::Equals)
         .filter(liquid_lib::jekyll::Slugify)
         .filter(liquid_lib::jekyll::Push)
         .filter(liquid_lib::jekyll::Pop)
