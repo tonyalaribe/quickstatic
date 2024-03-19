@@ -417,6 +417,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         };
 
         documents_list.push(document);
+
     }
 
     // Render all the markdowns and save them to final destination.
@@ -486,8 +487,12 @@ fn build(root_dir: String) -> eyre::Result<()> {
 }
 
 fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
-    let (_, ast) = djotters::parse_markdown(&md)
+    let (remaining_input, ast) = djotters::parse_markdown(&md)
         .map_err(|e| eyre!("{:#}", e).wrap_err("Failed to parse markdown"))?;
+    
+    if remaining_input != "" {
+        return Err(eyre!("markdown parsing error. Had text remaining after parse: {}", remaining_input))
+    }
 
     let headings: Vec<_> = ast
         .iter()
