@@ -405,7 +405,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
             file_destination_path: final_file_destination_path.clone(),
             markdown_body: file_content.clone(),
             markdown_processed: "".into(),
-            frontmatter: frontmatter,
+            frontmatter,
             content: file_content.into(),
             toc: vec![],
             permalink: final_file_destination_path
