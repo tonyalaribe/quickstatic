@@ -350,6 +350,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         .filter(crate::where_glob::Ternary)
         .filter(crate::where_glob::StartsWith)
         .filter(crate::where_glob::Equals)
+        .filter(crate::where_glob::Markdownify)
         .filter(liquid_lib::jekyll::Slugify)
         .filter(liquid_lib::jekyll::Push)
         .filter(liquid_lib::jekyll::Pop)

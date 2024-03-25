@@ -237,3 +237,33 @@ impl Filter for EqualsFilter {
         Ok(Value::scalar(result))
     }
 }
+
+
+// Markdownify Filter 
+//
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "markdownify",
+    description = "Render markdown as html.",
+    parsed(MarkdownifyFilter)
+)]
+pub struct Markdownify;
+
+#[derive(Debug, Display_filter, Default)]
+#[name = "markdownify"]
+pub struct MarkdownifyFilter {}
+
+
+impl Filter for MarkdownifyFilter {
+    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+        // Convert the input to a String 
+        let input_str = input.to_value().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?.to_kstr().into_string();
+
+        // Check if the input value equals the compare_value
+        let result = djotters::markdown(&input_str);
+
+        // Return the result as a Value
+        Ok(Value::scalar(result))
+    }
+}
