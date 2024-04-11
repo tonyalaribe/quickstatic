@@ -13,10 +13,8 @@ The first fast static site generator built in Rust specifically for [Djot](https
 - [Priorities](#priorities)
 - [Installation](#installation)
 - [Basic Usage](#basic-usage)
-  - [Building Site](#building-site)
-  - [Watching Changes and Continous Rebuilding ](#watching-changes-and-continous-rebuilding)
 - [Themes and Templates](#themes-and-templates)
-- [Contributing and Help](#contributing-and-help)
+- [Contributors Guide](#contributors-guide)
 - [License](#license)
 
 ---
@@ -49,13 +47,13 @@ cargo install quickstatic
 - Everything in the root directory gets copied into the output directory in that order, while markdown files are compiled into HTML files.
 - Anything with a `.liquid` extension is executed as a template and the `.liquid` extension is striped. E.g., `sitemap.xml.liquid` would be evaluated and become `sitemap.xml`.
 
-### Building Site
+To build the site, kindly run the command below:
 
 ```
 quickstatic build
 ```
 
-### Watching Changes and Continous Rebuilding
+To watch for changes and continuously rebuild the site, kindly run the command below:
 
 ```
 quickstatic serve
