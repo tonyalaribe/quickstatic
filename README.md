@@ -34,7 +34,7 @@ A QuickStatic site should show the content first, and hide themes or configurati
 
 ## Installation
 
-QuickStatic can only be installed using the command below. If you don't have Rust Caro installed already, you can learn how to do so using the [Cargo Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html).
+QuickStatic can only be installed using the command below (If you don't have Rust Caro installed already, you should read the [Cargo Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html)).
 
 ```
 cargo install quickstatic
