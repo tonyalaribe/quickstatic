@@ -2,7 +2,7 @@
   
 # QuickStatic 🚀🦀🔥
 
-The first fast static site generator built in Rust specifically for [Djot](https://djot.net) (a more powerful but strict markdown dialect).
+The first and fast static site generator built in Rust specifically for [Djot](https://djot.net) (a more powerful but strict markdown dialect).
 
 </div>
 
