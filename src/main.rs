@@ -11,6 +11,7 @@ use std::{
 };
 mod base_cli;
 mod where_glob;
+mod sort;
 use base_cli::Commands;
 use clap::Parser;
 use djotters::Markdown;
@@ -351,6 +352,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         .filter(crate::where_glob::StartsWith)
         .filter(crate::where_glob::Equals)
         .filter(crate::where_glob::Markdownify)
+        .filter(crate::sort::Sort)
         .filter(liquid_lib::jekyll::Slugify)
         .filter(liquid_lib::jekyll::Push)
         .filter(liquid_lib::jekyll::Pop)
