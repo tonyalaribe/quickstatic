@@ -35,7 +35,7 @@ A QuickStatic site should show the content first, and hide themes or configurati
 
 ## Installation
 
-QuickStatic can be installed using the `cargo` command below (if you don't have Rust Cargo installed already, you should read the [Cargo Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html)).
+QuickStatic can be installed (and updated) using the `cargo` command below (if you don't have Rust Cargo installed already, you should read the [Cargo Installation Guide](https://doc.rust-lang.org/cargo/getting-started/installation.html) and install it).
 
 ```
 cargo install quickstatic
@@ -43,10 +43,14 @@ cargo install quickstatic
 
 ## Basic Usage
 
+Some quick tips to note:
+
 - Quickstatic themes should be under `_quickstatic/themes/` directory.
 - Quickstatic public or build directory is `quickstatic/public`.
 - Everything in the root directory gets copied into the output directory in that order, while markdown files are compiled into HTML files.
 - Anything with a `.liquid` extension is executed as a template and the `.liquid` extension is striped. For example, `sitemap.xml.liquid` would be evaluated and become `sitemap.xml`.
+
+<br />
 
 To build the site, kindly run the command below:
 
@@ -58,6 +62,12 @@ To watch for changes and continuously rebuild the site, kindly run the command b
 
 ```
 quickstatic serve
+```
+
+For all options and commands, kindly run the command below:
+
+```
+quickstatic --help
 ```
 
 ## Themes and Templates 
