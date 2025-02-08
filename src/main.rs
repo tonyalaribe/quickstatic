@@ -188,28 +188,36 @@ async fn build_with_index(root_dir: String) -> eyre::Result<()> {
 
     // Generate pagefind's search index
      // let options = pagefind::SearchOptions {
-    let options = pagefind::PagefindInboundConfig{
-        source: "_quickstatic/public/".to_string(),
-        site:  "_quickstatic/public/".to_string(),
-        bundle_dir: None,
-        output_subdir: None,
-        output_path: None,
-        root_selector: "html".into(),
-        exclude_selectors: vec![],
-        glob: "**/*.{html}".into(),
-        force_language: None,
-        serve: false,
-        verbose: true,
-        logfile: None,
-        keep_index_url: false,
-        service: false,
-    };
-    let search_options = pagefind::SearchOptions::load(options).unwrap();
-    let runner = &mut pagefind::SearchState::new(search_options.clone());
-    runner.log_start();
-    _ = runner
-        .fossick_many(search_options.site_source.clone(), search_options.glob.clone())
-        .await;
+    // let options = pagefind::PagefindInboundConfig{
+    //     source: "_quickstatic/public/".to_string(),
+    //     site:  "_quickstatic/public/".to_string(),
+    //     bundle_dir: None,
+    //     output_subdir: None,
+    //     output_path: None,
+    //     root_selector: "html".into(),
+    //     exclude_selectors: vec![],
+    //     glob: "**/*.{html}".into(),
+    //     force_language: None,
+    //     serve: false,
+    //     verbose: true,
+    //     logfile: None,
+    //     keep_index_url: false,
+    //     service: false,
+    // };
+    // let search_options = pagefind::SearchOptions::load(options).unwrap();
+    // let runner = &mut pagefind::SearchState::new(search_options.clone());
+
+    let options = pagefind::options::PagefindServiceConfig::builder()
+        .keep_index_url(true)
+        .force_language("en".to_string())
+        .build();
+    let mut runner = pagefind::api::PagefindIndex::new(Some(options)).expect("Options should be valid");
+    runner.add_directory("_quickstatic/public/".to_string(), Some("**/*.{html}".into()));
+
+    // runner.log_start();
+    // _ = runner
+    //     .fossick_many(search_options.site_source.clone(), search_options.glob.clone())
+    //     .await;
 
 
     runner.build_indexes().await;
