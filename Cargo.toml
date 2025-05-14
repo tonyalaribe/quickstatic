@@ -9,7 +9,7 @@ description = "First static site generator build for [Djot](https://djot.net). O
 
 [dependencies]
 # djotters = { path = "../djotters" }
-djotters = "0.1.17" 
+djotters = "0.1.18"
 # jotdown = "0.3.2"
 gray_matter = "0.2.8"
 eyre = "0.6.12"
