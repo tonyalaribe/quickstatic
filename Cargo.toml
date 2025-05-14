@@ -1,6 +1,6 @@
 [package]
 name = "quickstatic"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 license = "MIT/Apache-2.0"
 description = "First static site generator build for [Djot](https://djot.net). Optimized for the actual content and not the themes or bells and wistle of the Static site generator"
