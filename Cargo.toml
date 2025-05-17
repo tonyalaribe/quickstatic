@@ -8,9 +8,6 @@ description = "First static site generator build for [Djot](https://djot.net). O
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# djotters = { path = "../djotters" }
-djotters = "0.1.18"
-# jotdown = "0.3.2"
 gray_matter = "0.2.8"
 eyre = "0.6.12"
 serde = "1.0.193"
@@ -26,3 +23,4 @@ notify-debouncer-mini = { version = "0.4.1", default-features = false }
 tokio = { version = "1.36.0", features = ["full"] }
 warp = "0.3.6"
 pagefind = "1.3.0"
+jotdown = "0.8.0"
