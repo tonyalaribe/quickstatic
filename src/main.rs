@@ -10,12 +10,15 @@ use std::{
     path::Path,
 };
 mod base_cli;
-mod where_glob;
 mod sort;
+mod where_glob;
 use base_cli::Commands;
 use clap::Parser;
-use djotters::Markdown;
 use eyre::{eyre, WrapErr};
+use jotdown::AttributeKind::Id;
+use jotdown::Container::Heading;
+
+use jotdown::Event::Start;
 use notify_debouncer_mini::{new_debouncer, notify::*, DebounceEventResult};
 use std::time::Duration;
 
@@ -187,7 +190,7 @@ async fn build_with_index(root_dir: String) -> eyre::Result<()> {
     build(root_dir)?;
 
     // Generate pagefind's search index
-     // let options = pagefind::SearchOptions {
+    // let options = pagefind::SearchOptions {
     // let options = pagefind::PagefindInboundConfig{
     //     source: "_quickstatic/public/".to_string(),
     //     site:  "_quickstatic/public/".to_string(),
@@ -211,14 +214,17 @@ async fn build_with_index(root_dir: String) -> eyre::Result<()> {
         .keep_index_url(true)
         .force_language("en".to_string())
         .build();
-    let mut runner = pagefind::api::PagefindIndex::new(Some(options)).expect("Options should be valid");
-    runner.add_directory("_quickstatic/public/".to_string(), Some("**/*.{html}".into()));
+    let mut runner =
+        pagefind::api::PagefindIndex::new(Some(options)).expect("Options should be valid");
+    runner.add_directory(
+        "_quickstatic/public/".to_string(),
+        Some("**/*.{html}".into()),
+    );
 
     // runner.log_start();
     // _ = runner
     //     .fossick_many(search_options.site_source.clone(), search_options.glob.clone())
     //     .await;
-
 
     runner.build_indexes().await;
 
@@ -428,7 +434,6 @@ fn build(root_dir: String) -> eyre::Result<()> {
         };
 
         documents_list.push(document);
-
     }
 
     // Render all the markdowns and save them to final destination.
@@ -498,37 +503,43 @@ fn build(root_dir: String) -> eyre::Result<()> {
 }
 
 fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
-    let (remaining_input, ast) = djotters::parse_markdown(&md)
-        .map_err(|e| eyre!("{:#}", e).wrap_err("Failed to parse markdown"))?;
-    
-    if remaining_input != "" {
-        return Err(eyre!("markdown parsing error. Had text remaining after parse: {}", remaining_input))
-    }
+    // let (remaining_input, ast) = djotters::parse_markdown(&md)
+    //     .map_err(|e| eyre!("{:#}", e).wrap_err("Failed to parse markdown"))?;
 
-    let headings: Vec<_> = ast
-        .iter()
+    // if remaining_input != "" {
+    //     return Err(eyre!(
+    //         "markdown parsing error. Had text remaining after parse: {}",
+    //         remaining_input
+    //     ));
+    // }
+    let events = jotdown::Parser::new(&md);
+    let hds = events
+        .clone()
         .filter_map(|item| match item {
-            Markdown::Heading(level, text, attrs) => {
-                if *level > 1 {
+            Start(
+                Heading {
+                    level,
+                    has_section,
+                    id,
+                },
+                _,
+            ) => {
+                if level > 1 {
                     Some(TOC {
-                        level: level.to_owned(),
-                        title: djotters::translator::translate_text(text.to_vec()),
-                        id: attrs
-                            .clone()
-                            .unwrap()
-                            .get("id")
-                            .unwrap_or(&"".to_string())
-                            .clone(),
+                        level: level.into(),
+                        title: id.clone().into_owned().replace("-", " "),
+                        id: id.into_owned(),
                     })
                 } else {
                     None
                 }
             }
+
             _ => None,
         })
         .collect();
-    let content = djotters::translate(ast);
-    Ok((content, headings))
+    let html = jotdown::html::render_to_string(events);
+    Ok((html, hds))
 }
 
 fn write_to_location(file_path: String, data: &[u8]) -> eyre::Result<()> {

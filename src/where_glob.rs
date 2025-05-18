@@ -35,7 +35,9 @@ struct WhereGlobFilter {
     args: WhereGlobArgs,
 }
 
-pub fn as_sequence<'k>(input: &'k dyn ValueView) -> Box<dyn Iterator<Item = &'k dyn ValueView> + 'k> {
+pub fn as_sequence<'k>(
+    input: &'k dyn ValueView,
+) -> Box<dyn Iterator<Item = &'k dyn ValueView> + 'k> {
     if let Some(array) = input.as_array() {
         array.values()
     } else if input.is_nil() {
@@ -100,8 +102,7 @@ where
     Error::with_msg("Invalid input").context("cause", cause)
 }
 
-
-// 
+//
 //
 //
 //
@@ -115,8 +116,6 @@ where
 )]
 pub struct Ternary;
 
-
-
 #[derive(Debug, FilterParameters)]
 struct TernaryArgs {
     #[parameter(description = "Value if condition is true", arg_type = "any")]
@@ -126,7 +125,6 @@ struct TernaryArgs {
     false_value: Expression,
 }
 
-
 #[derive(Debug, FromFilterParameters, Display_filter)]
 #[name = "ternary"]
 struct TernaryFilter {
@@ -135,12 +133,19 @@ struct TernaryFilter {
 }
 
 impl Filter for TernaryFilter {
-    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        runtime: &dyn Runtime,
+    ) -> Result<Value, liquid_core::Error> {
         // Convert the input to a Value
         let input_value = input.to_value();
 
         // Attempt to convert the Value into a boolean
-        let condition = input_value.as_scalar().and_then(|s| s.to_bool()).unwrap_or(false);
+        let condition = input_value
+            .as_scalar()
+            .and_then(|s| s.to_bool())
+            .unwrap_or(false);
 
         let true_value = self.args.true_value.evaluate(runtime)?.into_owned();
         let false_value = self.args.false_value.evaluate(runtime)?.into_owned();
@@ -153,8 +158,7 @@ impl Filter for TernaryFilter {
     }
 }
 
-
-// StartsWith filter 
+// StartsWith filter
 //
 
 #[derive(Debug, Clone, ParseFilter, FilterReflection)]
@@ -180,12 +184,29 @@ struct StartsWithFilter {
 }
 
 impl Filter for StartsWithFilter {
-    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        runtime: &dyn Runtime,
+    ) -> Result<Value, liquid_core::Error> {
         // Attempt to convert the input to a scalar and then to a string
-        let input_str = input.to_value().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?.to_kstr().into_string();
+        let input_str = input
+            .to_value()
+            .as_scalar()
+            .ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?
+            .to_kstr()
+            .into_string();
 
         // Evaluate the prefix argument and attempt to convert it to a string
-        let prefix = self.args.prefix.evaluate(runtime)?.into_owned().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Prefix is not a scalar value"))?.to_kstr().into_string();
+        let prefix = self
+            .args
+            .prefix
+            .evaluate(runtime)?
+            .into_owned()
+            .as_scalar()
+            .ok_or_else(|| liquid_core::Error::with_msg("Prefix is not a scalar value"))?
+            .to_kstr()
+            .into_string();
 
         // Check if the input string starts with the prefix
         let result = input_str.starts_with(&prefix);
@@ -195,8 +216,7 @@ impl Filter for StartsWithFilter {
     }
 }
 
-
-// Equals Filter 
+// Equals Filter
 //
 
 #[derive(Clone, ParseFilter, FilterReflection)]
@@ -221,9 +241,12 @@ pub struct EqualsFilter {
     args: EqualsArgs,
 }
 
-
 impl Filter for EqualsFilter {
-    fn evaluate(&self, input: &dyn ValueView, runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        runtime: &dyn Runtime,
+    ) -> Result<Value, liquid_core::Error> {
         // Convert the input to a Value
         let input_value = input.to_value();
 
@@ -238,8 +261,7 @@ impl Filter for EqualsFilter {
     }
 }
 
-
-// Markdownify Filter 
+// Markdownify Filter
 //
 
 #[derive(Clone, ParseFilter, FilterReflection)]
@@ -254,15 +276,23 @@ pub struct Markdownify;
 #[name = "markdownify"]
 pub struct MarkdownifyFilter {}
 
-
 impl Filter for MarkdownifyFilter {
-    fn evaluate(&self, input: &dyn ValueView, _runtime: &dyn Runtime) -> Result<Value, liquid_core::Error> {
-        // Convert the input to a String 
-        let input_str = input.to_value().as_scalar().ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?.to_kstr().into_string();
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        _runtime: &dyn Runtime,
+    ) -> Result<Value, liquid_core::Error> {
+        // Convert the input to a String
+        let input_str = input
+            .to_value()
+            .as_scalar()
+            .ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?
+            .to_kstr()
+            .into_string();
 
         // Check if the input value equals the compare_value
-        let result = djotters::markdown(&input_str);
-
+        let events = jotdown::Parser::new(&input_str);
+        let result = jotdown::html::render_to_string(events);
         // Return the result as a Value
         Ok(Value::scalar(result))
     }
