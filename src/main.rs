@@ -522,23 +522,13 @@ fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
                     has_section,
                     id,
                 },
-                attr,
+                _,
             ) => {
                 if level > 1 {
-                    let id_o = attr.iter().find(|(k, _)| match k {
-                        Id => true,
-                        _ => false,
-                    });
-
-                    let id_val = match id_o {
-                        Some((_, v)) => v.parts().map(|s| s.to_string()).collect::<String>(),
-                        _ => "".to_string(),
-                    };
-
                     Some(TOC {
                         level: level.into(),
-                        title: id.into_owned(),
-                        id: id_val,
+                        title: id.clone().into_owned().replace("-", " "),
+                        id: id.into_owned(),
                     })
                 } else {
                     None
