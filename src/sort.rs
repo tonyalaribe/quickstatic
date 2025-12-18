@@ -7,7 +7,44 @@ use liquid_core::{
 use liquid_core::{Value, ValueView};
 use std::cmp;
 use crate::where_glob::{invalid_input, as_sequence};
+use chrono::{DateTime, NaiveDateTime, NaiveDate};
 
+fn try_parse_date(s: &str) -> Option<i64> {
+    // Try ISO 8601 datetime with timezone
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp());
+    }
+
+    // Try ISO 8601 datetime without timezone
+    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt.and_utc().timestamp());
+    }
+
+    // Try date only (YYYY-MM-DD)
+    if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(d.and_hms_opt(0, 0, 0)?.and_utc().timestamp());
+    }
+
+    // Try alternative formats (MM/DD/YYYY, DD-MM-YYYY, etc.)
+    let formats = [
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+    ];
+
+    for format in &formats {
+        if let Ok(d) = NaiveDate::parse_from_str(s, format) {
+            return Some(d.and_hms_opt(0, 0, 0)?.and_utc().timestamp());
+        }
+        if let Ok(dt) = NaiveDateTime::parse_from_str(s, format) {
+            return Some(dt.and_utc().timestamp());
+        }
+    }
+
+    None
+}
 
 fn nil_safe_compare(a: Value, b: Value) -> Option<cmp::Ordering> {
     if a.is_nil() && b.is_nil() {
@@ -17,6 +54,17 @@ fn nil_safe_compare(a: Value, b: Value) -> Option<cmp::Ordering> {
     } else if b.is_nil() {
         Some(cmp::Ordering::Less)
     } else {
+        // Try to parse as dates if both are strings
+        if let (Some(a_scalar), Some(b_scalar)) = (a.as_scalar(), b.as_scalar()) {
+            let a_str = a_scalar.to_kstr();
+            let b_str = b_scalar.to_kstr();
+
+            if let (Some(a_timestamp), Some(b_timestamp)) =
+                (try_parse_date(a_str.as_str()), try_parse_date(b_str.as_str())) {
+                return Some(a_timestamp.cmp(&b_timestamp));
+            }
+        }
+
         a.partial_cmp(&b)
     }
 }

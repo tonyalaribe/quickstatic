@@ -14,8 +14,7 @@ mod sort;
 mod where_glob;
 use base_cli::Commands;
 use clap::Parser;
-use eyre::{eyre, WrapErr};
-use jotdown::AttributeKind::Id;
+use eyre::WrapErr;
 use jotdown::Container::Heading;
 
 use jotdown::Event::Start;
@@ -366,6 +365,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         .filter(crate::where_glob::StartsWith)
         .filter(crate::where_glob::Equals)
         .filter(crate::where_glob::Markdownify)
+        .filter(crate::where_glob::Date)
         .filter(crate::sort::Sort)
         .filter(liquid_lib::jekyll::Slugify)
         .filter(liquid_lib::jekyll::Push)
@@ -388,7 +388,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         // as main content as is.
         let (file_content, frontmatter, file_destination_path) =
             if file_path_no_root.ends_with(".md") {
-                let result = matter.parse(&contents);
+                let result = matter.parse(&contents)?;
                 let frontmatter: Value = result
                     .data
                     .unwrap_or(gray_matter::Pod::Null)
@@ -519,7 +519,7 @@ fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
             Start(
                 Heading {
                     level,
-                    has_section,
+                    has_section: _,
                     id,
                 },
                 _,

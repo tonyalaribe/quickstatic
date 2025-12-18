@@ -6,6 +6,7 @@ use liquid_core::{
     Display_filter, Filter, FilterParameters, FilterReflection, FromFilterParameters, ParseFilter,
 };
 use liquid_core::{Value, ValueCow, ValueView};
+use chrono::{DateTime, NaiveDateTime, NaiveDate, Utc};
 
 #[derive(Debug, FilterParameters)]
 struct WhereGlobArgs {
@@ -295,5 +296,112 @@ impl Filter for MarkdownifyFilter {
         let result = jotdown::html::render_to_string(events);
         // Return the result as a Value
         Ok(Value::scalar(result))
+    }
+}
+
+// Date Filter
+//
+
+#[derive(Clone, ParseFilter, FilterReflection)]
+#[filter(
+    name = "date",
+    description = "Formats a date using strftime format. Input can be a date string or 'now' for current time.",
+    parameters(DateArgs),
+    parsed(DateFilter)
+)]
+pub struct Date;
+
+#[derive(Debug, FilterParameters)]
+struct DateArgs {
+    #[parameter(description = "The format string (strftime syntax)", arg_type = "str")]
+    format: Expression,
+}
+
+#[derive(Debug, FromFilterParameters, Display_filter)]
+#[name = "date"]
+pub struct DateFilter {
+    #[parameters]
+    args: DateArgs,
+}
+
+fn parse_date_input(input_str: &str) -> Result<DateTime<Utc>> {
+    // Handle "now" special case
+    if input_str.trim().to_lowercase() == "now" {
+        return Ok(Utc::now());
+    }
+
+    // Try ISO 8601 datetime with timezone
+    if let Ok(dt) = DateTime::parse_from_rfc3339(input_str) {
+        return Ok(dt.to_utc());
+    }
+
+    // Try ISO 8601 datetime without timezone
+    if let Ok(dt) = NaiveDateTime::parse_from_str(input_str, "%Y-%m-%dT%H:%M:%S") {
+        return Ok(dt.and_utc());
+    }
+
+    // Try date only (YYYY-MM-DD)
+    if let Ok(d) = NaiveDate::parse_from_str(input_str, "%Y-%m-%d") {
+        if let Some(dt) = d.and_hms_opt(0, 0, 0) {
+            return Ok(dt.and_utc());
+        }
+    }
+
+    // Try alternative formats
+    let formats = [
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%d-%m-%Y",
+        "%B %d, %Y", // "January 1, 2024"
+        "%b %d, %Y", // "Jan 1, 2024"
+    ];
+
+    for format in &formats {
+        if let Ok(d) = NaiveDate::parse_from_str(input_str, format) {
+            if let Some(dt) = d.and_hms_opt(0, 0, 0) {
+                return Ok(dt.and_utc());
+            }
+        }
+        if let Ok(dt) = NaiveDateTime::parse_from_str(input_str, format) {
+            return Ok(dt.and_utc());
+        }
+    }
+
+    Err(liquid_core::Error::with_msg(format!(
+        "Unable to parse date: {}. Use ISO 8601 format (YYYY-MM-DD) or 'now'",
+        input_str
+    )))
+}
+
+impl Filter for DateFilter {
+    fn evaluate(
+        &self,
+        input: &dyn ValueView,
+        runtime: &dyn Runtime,
+    ) -> Result<Value, liquid_core::Error> {
+        let input_str = input
+            .to_value()
+            .as_scalar()
+            .ok_or_else(|| liquid_core::Error::with_msg("Input is not a scalar value"))?
+            .to_kstr()
+            .into_string();
+
+        let format_str = self
+            .args
+            .format
+            .evaluate(runtime)?
+            .into_owned()
+            .as_scalar()
+            .ok_or_else(|| liquid_core::Error::with_msg("Format is not a scalar value"))?
+            .to_kstr()
+            .into_string();
+
+        let dt = parse_date_input(&input_str)?;
+        let formatted = dt.format(&format_str).to_string();
+
+        Ok(Value::scalar(formatted))
     }
 }
