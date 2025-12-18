@@ -215,17 +215,19 @@ async fn build_with_index(root_dir: String) -> eyre::Result<()> {
         .build();
     let mut runner =
         pagefind::api::PagefindIndex::new(Some(options)).expect("Options should be valid");
-    runner.add_directory(
-        "_quickstatic/public/".to_string(),
-        Some("**/*.{html}".into()),
-    );
+    let _ = runner
+        .add_directory(
+            "_quickstatic/public/".to_string(),
+            Some("**/*.{html}".into()),
+        )
+        .await;
 
     // runner.log_start();
     // _ = runner
     //     .fossick_many(search_options.site_source.clone(), search_options.glob.clone())
     //     .await;
 
-    runner.build_indexes().await;
+    let _ = runner.build_indexes().await;
 
     Ok(())
 }
