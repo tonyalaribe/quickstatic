@@ -2326,7 +2326,7 @@ dependencies = [
 
 [[package]]
 name = "quickstatic"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "chrono",
  "clap",
@@ -2335,6 +2335,7 @@ dependencies = [
  "gray_matter",
  "indexmap 2.7.1",
  "jotdown",
+ "kstring",
  "liquid",
  "liquid-core",
  "liquid-lib",

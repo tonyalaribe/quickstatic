@@ -1,5 +1,6 @@
 use gray_matter::{engine::YAML, Matter};
 use indexmap::IndexMap;
+use liquid::ObjectView;
 use liquid_core::partials::{EagerCompiler, InMemorySource};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
@@ -21,7 +22,7 @@ use jotdown::Event::Start;
 use notify_debouncer_mini::{new_debouncer, notify::*, DebounceEventResult};
 use std::time::Duration;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Debug, Serialize)]
 struct DocumentData {
     file_path: String,
     file_destination_path: String,
@@ -50,13 +51,20 @@ struct Config {
     ignore: Vec<String>,
     #[serde(skip_deserializing)]
     raw: Value,
+    // true under `serve`, so templates can skip e.g. analytics locally.
+    #[serde(skip_deserializing)]
+    dev: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, liquid::ObjectView, liquid::ValueView)]
 struct RenderContext<'a> {
-    config: &'a Config,
-    this: &'a mut DocumentData,
-    file_list: Vec<DocumentData>,
+    config: &'a liquid::model::Value,
+    this: liquid::model::Value,
+    file_list: &'a liquid::model::Value,
+}
+
+fn up_to_date(src: &Path, dest: &Path) -> bool {
+    matches!((src.metadata(), dest.metadata()), (Ok(s), Ok(d)) if s.len() == d.len() && s.modified().ok() <= d.modified().ok())
 }
 
 fn get_file_paths_recursive(
@@ -157,6 +165,7 @@ fn copy_recursive(
                         "copy_recursive: failed converting os string to string for path {path:?}"
                     ))
                     .ends_with(".md")
+                    && !up_to_date(&path, &new_dest)
                 {
                     fs::copy(&path, &new_dest)
                         .wrap_err(format!("copy_recursive: failed to copy {path:?}"))?;
@@ -186,7 +195,7 @@ async fn main() -> eyre::Result<()> {
 }
 
 async fn build_with_index(root_dir: String) -> eyre::Result<()> {
-    build(root_dir)?;
+    build(root_dir, false)?;
 
     // Generate pagefind's search index
     // let options = pagefind::SearchOptions {
@@ -255,41 +264,50 @@ async fn serve(dir: String, http_port: u16) -> eyre::Result<()> {
 }
 
 fn watch_directory_and_run_command(dir: &str) -> eyre::Result<()> {
-    match build(dir.to_string()) {
-        Err(e) => println!("Build Error: {:?}\n", e),
-        Ok(_res) => println!("Rebuilt site \n"),
+    let rebuild = || {
+        let started = std::time::SystemTime::now();
+        match build(dir.to_string(), true) {
+            Err(e) => println!("Build Error: {:?}\n", e),
+            Ok(_res) => println!("Rebuilt site \n"),
+        };
+        started
     };
+    let mut built_at = rebuild();
 
     let (tx, rx) = std::sync::mpsc::channel();
-
-    println!("Watching and recompiling after every change");
-
-    let mut debouncer = new_debouncer(
-        Duration::from_millis(10),
-        move |res: DebounceEventResult| {
-            tx.send(res).unwrap();
-        },
-    )?;
-
-    // Add a path to be watched. All files and directories at that path and
-    // below will be monitored for changes.
+    let mut debouncer = new_debouncer(Duration::from_millis(250), tx)?;
     debouncer
         .watcher()
-        .watch(Path::new("."), RecursiveMode::Recursive)?;
+        .watch(Path::new(dir), RecursiveMode::Recursive)?;
+    println!("Watching and recompiling after every change");
 
-    for res in rx {
-        match res {
-            Ok(events) => events
-                .iter()
-                .filter(|f| !f.path.to_str().unwrap().contains("_quickstatic/public/"))
-                .for_each(|_| match build(dir.to_string()) {
-                    Err(e) => println!("Build Error: {:?}\n", e),
-                    Ok(_res) => println!("Rebuilt site \n"),
-                }),
-            Err(e) => println!("Error {:?}", e),
+    // FSEvents may re-report a change the previous build already saw, so files untouched since then are skipped.
+    let relevant = |built_at, res: DebounceEventResult| match res {
+        Ok(events) => events.iter().any(|e| {
+            !e.path.to_string_lossy().contains("_quickstatic/public")
+                && !e.path.components().any(|c| {
+                    [".git", "node_modules"].contains(&c.as_os_str().to_str().unwrap_or_default())
+                })
+                && fs::metadata(&e.path)
+                    .ok()
+                    .and_then(|m| [m.modified(), m.created()].into_iter().flatten().max())
+                    .map_or(true, |t| t >= built_at)
+        }),
+        Err(e) => {
+            println!("Error {:?}", e);
+            false
+        }
+    };
+    // Coalesce everything queued (e.g. during a build) into a single rebuild.
+    while let Ok(res) = rx.recv() {
+        if std::iter::once(res)
+            .chain(rx.try_iter())
+            .map(|r| relevant(built_at, r))
+            .fold(false, |a, b| a | b)
+        {
+            built_at = rebuild();
         }
     }
-
     Ok(())
 }
 
@@ -299,9 +317,9 @@ async fn serve_directory(port: u16, dir: String) -> eyre::Result<()> {
     Ok(())
 }
 
-fn find_template(layouts_map: IndexMap<String, String>, file_path: String) -> eyre::Result<String> {
-    for (k, v) in &layouts_map {
-        if glob_match::glob_match(&k, &file_path.clone()) {
+fn find_template(layouts_map: &IndexMap<String, String>, file_path: &str) -> eyre::Result<String> {
+    for (k, v) in layouts_map {
+        if glob_match::glob_match(k, file_path) {
             return Ok(v.into());
         };
     }
@@ -309,7 +327,7 @@ fn find_template(layouts_map: IndexMap<String, String>, file_path: String) -> ey
     Err(eyre::eyre!("expecting a general layout glob such as **/*.md to be set in the ./quickstatic.yaml config file: {:?} layout_map: {:?}", file_path, layouts_map))
 }
 
-fn build(root_dir: String) -> eyre::Result<()> {
+fn build(root_dir: String, dev: bool) -> eyre::Result<()> {
     let dir = Path::new(&root_dir); // Specify the directory
 
     // Read the config into a config struct.
@@ -319,6 +337,7 @@ fn build(root_dir: String) -> eyre::Result<()> {
         .wrap_err("unable to unmarshal config into serde yaml Value")?;
     let mut config_struct: Config = serde_yaml::from_value(config_value.clone())?;
     config_struct.raw = config_value;
+    config_struct.dev = dev;
 
     let exclude_dir_names = vec!["_quickstatic", ".git", "node_modules"];
     copy_recursive(
@@ -439,64 +458,51 @@ fn build(root_dir: String) -> eyre::Result<()> {
     }
 
     // Render all the markdowns and save them to final destination.
-    let documents_list_clone = documents_list.clone();
-    for document in &mut documents_list {
-        let render_ctx = &mut RenderContext {
-            config: &config_struct,
-            this: document,
-            file_list: documents_list_clone.clone(),
-        };
-
-        let render_ctx_obj = liquid::to_object(&render_ctx)?;
-        if render_ctx.this.file_path.clone().ends_with(".md") {
-            let template = parser_builder
-                .parse(&render_ctx.this.markdown_body)
-                .wrap_err(format!("parser_builder.parse template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))?;
-
-            render_ctx.this.markdown_processed = template.render(&render_ctx_obj)?;
-            let (md_processed, toc) = process_markdown(render_ctx.this.markdown_processed.clone())
-                .wrap_err(format!("process_markdown: template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))?;
-            render_ctx.this.content = md_processed;
-            render_ctx.this.toc = toc;
+    let config_val = liquid::model::to_value(&config_struct)?;
+    let file_list = liquid::model::to_value(&documents_list)?;
+    let ctx = |doc: &DocumentData| -> liquid_core::Result<RenderContext> {
+        Ok(RenderContext {
+            config: &config_val,
+            this: liquid::model::to_value(doc)?,
+            file_list: &file_list,
+        })
+    };
+    let mut layouts: HashMap<String, liquid::Template> = HashMap::new();
+    for doc in &mut documents_list {
+        let rendered = parser_builder
+            .parse(&doc.markdown_body)
+            .and_then(|t| t.render(&ctx(doc)?))
+            .wrap_err_with(|| format!("liquid render failed on current_file: {}", doc.file_path))?;
+        if doc.file_path.ends_with(".md") {
+            (doc.content, doc.toc) = process_markdown(&rendered);
+            doc.markdown_processed = rendered;
         } else {
-            let template = parser_builder
-                .parse(&render_ctx.this.content)
-                .wrap_err(format!("parser_builder.parse failed on content result of current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))?;
-
-            render_ctx.this.content = template.render(&render_ctx_obj)
-                .wrap_err(format!("parser_builder.parse template.render failed on current_file: {} post-frontmatter content: {:?}",render_ctx.this.file_path, &render_ctx.this.markdown_body))? ;
+            doc.content = rendered;
         }
 
-        let layout_for_document = if let Some(layout_in_cfg) = render_ctx
-            .this
-            .frontmatter
-            .as_mapping()
-            .and_then(|m| m.get("layout"))
-            .and_then(|m| m.as_str())
-        {
-            layout_in_cfg.to_string()
-        } else {
-            find_template(
-                config_struct.layouts.clone(),
-                render_ctx.this.file_path.clone(),
-            )?
+        let layout = match doc.frontmatter.get("layout").and_then(|m| m.as_str()) {
+            Some(l) => l.to_string(),
+            None => find_template(&config_struct.layouts, &doc.file_path)?,
         };
-
-        let render_ctx_obj = liquid::to_object(&render_ctx)?;
-        let document_as_html = parser_builder
-            .parse_file(
-                Path::new(&root_dir)
-                    .join("_quickstatic/themes")
-                    .join(&layout_for_document),
-            )
-            .and_then(|f| f.render(&render_ctx_obj))
-            .wrap_err(format!(
-                "document_as_html failed for file_path {:?} and layout {:?}",
-                render_ctx.this.file_path, layout_for_document
-            ))?;
+        let template = match layouts.entry(layout) {
+            std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let t = parser_builder
+                    .parse_file(
+                        Path::new(&root_dir)
+                            .join("_quickstatic/themes")
+                            .join(e.key()),
+                    )
+                    .wrap_err_with(|| format!("failed to parse layout {:?}", e.key()))?;
+                e.insert(t)
+            }
+        };
+        let document_as_html = template.render(&ctx(doc)?).wrap_err_with(|| {
+            format!("document_as_html failed for file_path {:?}", doc.file_path)
+        })?;
 
         write_to_location(
-            render_ctx.this.file_destination_path.to_owned(),
+            doc.file_destination_path.to_owned(),
             document_as_html.as_bytes(),
         )?;
     }
@@ -504,17 +510,8 @@ fn build(root_dir: String) -> eyre::Result<()> {
     Ok(())
 }
 
-fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
-    // let (remaining_input, ast) = djotters::parse_markdown(&md)
-    //     .map_err(|e| eyre!("{:#}", e).wrap_err("Failed to parse markdown"))?;
-
-    // if remaining_input != "" {
-    //     return Err(eyre!(
-    //         "markdown parsing error. Had text remaining after parse: {}",
-    //         remaining_input
-    //     ));
-    // }
-    let events = jotdown::Parser::new(&md);
+fn process_markdown(md: &str) -> (String, Vec<TOC>) {
+    let events = jotdown::Parser::new(md);
     let hds = events
         .clone()
         .filter_map(|item| match item {
@@ -540,8 +537,7 @@ fn process_markdown(md: String) -> eyre::Result<(String, Vec<TOC>)> {
             _ => None,
         })
         .collect();
-    let html = jotdown::html::render_to_string(events);
-    Ok((html, hds))
+    (jotdown::html::render_to_string(events), hds)
 }
 
 fn write_to_location(file_path: String, data: &[u8]) -> eyre::Result<()> {

@@ -46,26 +46,20 @@ fn try_parse_date(s: &str) -> Option<i64> {
     None
 }
 
-fn nil_safe_compare(a: Value, b: Value) -> Option<cmp::Ordering> {
-    if a.is_nil() && b.is_nil() {
-        Some(cmp::Ordering::Equal)
-    } else if a.is_nil() {
-        Some(cmp::Ordering::Greater)
-    } else if b.is_nil() {
-        Some(cmp::Ordering::Less)
-    } else {
-        // Try to parse as dates if both are strings
-        if let (Some(a_scalar), Some(b_scalar)) = (a.as_scalar(), b.as_scalar()) {
-            let a_str = a_scalar.to_kstr();
-            let b_str = b_scalar.to_kstr();
+// Values paired with their parsed date (if any), so dates are parsed once per element rather than per comparison.
+type SortKey = (Option<i64>, Value);
 
-            if let (Some(a_timestamp), Some(b_timestamp)) =
-                (try_parse_date(a_str.as_str()), try_parse_date(b_str.as_str())) {
-                return Some(a_timestamp.cmp(&b_timestamp));
-            }
-        }
+fn sort_key(v: Value) -> SortKey {
+    (v.as_scalar().and_then(|s| try_parse_date(s.to_kstr().as_str())), v)
+}
 
-        a.partial_cmp(&b)
+fn nil_safe_compare((da, a): &SortKey, (db, b): &SortKey) -> Option<cmp::Ordering> {
+    match (a.is_nil(), b.is_nil(), da, db) {
+        (true, true, ..) => Some(cmp::Ordering::Equal),
+        (true, ..) => Some(cmp::Ordering::Greater),
+        (_, true, ..) => Some(cmp::Ordering::Less),
+        (_, _, Some(x), Some(y)) => Some(x.cmp(y)),
+        _ => a.partial_cmp(b),
     }
 }
 
@@ -91,22 +85,8 @@ struct SortFilter {
     args: PropertyArgs,
 }
 
-fn safe_property_getter<'a>(value: &'a Value, property: &str) ->Value {
-    let mut current_value = value.to_value();
-    
-    for key in property.split('.') {
-        if let Some(obj) = current_value.as_object() {
-            if let Some(next_value) = obj.get(key) {
-                current_value = next_value.to_value() ;
-            } else {
-                return Value::Nil;
-            }
-        } else {
-            return Value::Nil;
-        }
-    }
-    
-    current_value
+fn property<'a>(value: &'a dyn ValueView, path: &str) -> Option<&'a dyn ValueView> {
+    path.split('.').try_fold(value, |v, key| v.as_object()?.get(key))
 }
 
 impl Filter for SortFilter {
@@ -118,19 +98,17 @@ impl Filter for SortFilter {
             return Err(invalid_input("Array of objects expected"));
         }
 
-        let mut sorted: Vec<Value> = input.iter().map(|v| v.to_value()).collect();
-        if let Some(property) = &args.property {
-            // Using unwrap is ok since all of the elements are objects
-            sorted.sort_by(|a, b| {
-                nil_safe_compare(
-                    safe_property_getter(a, property),
-                    safe_property_getter(b, property),
-                )
-                .unwrap_or(cmp::Ordering::Equal)
-            });
-        } else {
-            sorted.sort_by(|a, b| nil_safe_compare(a.clone(), b.clone()).unwrap_or(cmp::Ordering::Equal));
-        }
-        Ok(Value::array(sorted))
+        let mut sorted: Vec<(SortKey, &dyn ValueView)> = input
+            .into_iter()
+            .map(|v| {
+                let key = match &args.property {
+                    Some(p) => property(v, p).map_or(Value::Nil, |x| x.to_value()),
+                    None => v.to_value(),
+                };
+                (sort_key(key), v)
+            })
+            .collect();
+        sorted.sort_by(|(a, _), (b, _)| nil_safe_compare(a, b).unwrap_or(cmp::Ordering::Equal));
+        Ok(Value::array(sorted.into_iter().map(|(_, v)| v.to_value())))
     }
 }
